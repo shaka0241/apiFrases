@@ -29,13 +29,39 @@ async function connectToMongo() {
 }
 
 // 4. Creamos el "Molde" (Esquema) para nuestras frases
-const FraseSchema = new mongoose.Schema({
-  texto: String,
-  autor: String,
-});
-const Frase = mongoose.model("Frase", FraseSchema);
+const FraseSchema = new mongoose.Schema(
+  {
+    texto: String,
+    autor: String,
+  },
+  {
+    collection: "frases",
+  },
+);
+const Frase = mongoose.models.Frase || mongoose.model("Frase", FraseSchema);
+
+function getMongoDebugInfo() {
+  return {
+    database: mongoose.connection.name,
+    collection: Frase.collection.name,
+    readyState: mongoose.connection.readyState,
+  };
+}
 
 // 5. RUTAS DE NUESTRA API
+
+app.get("/api/debug-db", async (req: Request, res: Response) => {
+  try {
+    await connectToMongo();
+    res.json(getMongoDebugInfo());
+  } catch (error) {
+    console.error("Error al inspeccionar MongoDB:", error);
+    res.status(500).json({
+      error: "No se pudo inspeccionar la conexion",
+      detail: error instanceof Error ? error.message : "Error desconocido",
+    });
+  }
+});
 
 // Ruta GET: Sirve para LEER todas las frases
 app.get("/api/frases", async (req: Request, res: Response) => {
@@ -45,20 +71,33 @@ app.get("/api/frases", async (req: Request, res: Response) => {
     res.json(frases);
   } catch (error) {
     console.error("Error al leer frases:", error);
-    res.status(500).json({ error: "No se pudieron obtener las frases" });
+    res.status(500).json({
+      error: "No se pudieron obtener las frases",
+      detail: error instanceof Error ? error.message : "Error desconocido",
+    });
   }
 });
 
 // Ruta POST: Sirve para CREAR una nueva frase
 app.post("/api/frases", async (req: Request, res: Response) => {
   try {
+    const { texto, autor } = req.body;
+
+    if (!texto || !autor) {
+      res.status(400).json({ error: "Debes enviar texto y autor" });
+      return;
+    }
+
     await connectToMongo();
-    const nuevaFrase = new Frase(req.body); // Toma los datos que envía el usuario
+    const nuevaFrase = new Frase({ texto, autor }); // Toma los datos que envía el usuario
     await nuevaFrase.save(); // Los guarda en MongoDB
     res.status(201).json(nuevaFrase); // Responde con la frase recién creada
   } catch (error) {
     console.error("Error al crear frase:", error);
-    res.status(500).json({ error: "No se pudo guardar la frase" });
+    res.status(500).json({
+      error: "No se pudo guardar la frase",
+      detail: error instanceof Error ? error.message : "Error desconocido",
+    });
   }
 });
 
