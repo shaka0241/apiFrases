@@ -10,11 +10,23 @@ const app = express();
 app.use(express.json()); // Permite que nuestra API entienda formato JSON
 
 // 3. Conexión a MongoDB
-// Usamos ! al final para prometerle a TypeScript que esta variable existirá
-mongoose
-  .connect(process.env.MONGODB_URI!)
-  .then(() => console.log("¡Conectado a la Base de Datos!"))
-  .catch((err) => console.error("Error al conectar:", err));
+const mongoUri = process.env.MONGODB_URI;
+
+if (!mongoUri) {
+  throw new Error("Falta la variable de entorno MONGODB_URI");
+}
+
+const mongoUriValidated: string = mongoUri;
+
+let isMongoConnected = false;
+
+async function connectToMongo() {
+  if (isMongoConnected) return;
+
+  await mongoose.connect(mongoUriValidated);
+  isMongoConnected = true;
+  console.log("¡Conectado a la Base de Datos!");
+}
 
 // 4. Creamos el "Molde" (Esquema) para nuestras frases
 const FraseSchema = new mongoose.Schema({
@@ -27,15 +39,27 @@ const Frase = mongoose.model("Frase", FraseSchema);
 
 // Ruta GET: Sirve para LEER todas las frases
 app.get("/api/frases", async (req: Request, res: Response) => {
-  const frases = await Frase.find(); // Busca todas las frases en MongoDB
-  res.json(frases);
+  try {
+    await connectToMongo();
+    const frases = await Frase.find(); // Busca todas las frases en MongoDB
+    res.json(frases);
+  } catch (error) {
+    console.error("Error al leer frases:", error);
+    res.status(500).json({ error: "No se pudieron obtener las frases" });
+  }
 });
 
 // Ruta POST: Sirve para CREAR una nueva frase
 app.post("/api/frases", async (req: Request, res: Response) => {
-  const nuevaFrase = new Frase(req.body); // Toma los datos que envía el usuario
-  await nuevaFrase.save(); // Los guarda en MongoDB
-  res.status(201).json(nuevaFrase); // Responde con la frase recién creada
+  try {
+    await connectToMongo();
+    const nuevaFrase = new Frase(req.body); // Toma los datos que envía el usuario
+    await nuevaFrase.save(); // Los guarda en MongoDB
+    res.status(201).json(nuevaFrase); // Responde con la frase recién creada
+  } catch (error) {
+    console.error("Error al crear frase:", error);
+    res.status(500).json({ error: "No se pudo guardar la frase" });
+  }
 });
 
 // 6. Exportamos la app para que Vercel pueda encenderla
