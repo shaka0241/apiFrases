@@ -19,11 +19,21 @@ if (!mongoUri) {
 const mongoUriValidated: string = mongoUri;
 
 let isMongoConnected = false;
+let currentDatabase = "FraseAlbertoDB"; // Valor por defecto, se actualizará al conectar
 
 async function connectToMongo() {
   if (isMongoConnected) return;
 
   await mongoose.connect(mongoUriValidated);
+
+  // Usa el nombre de DB de la variable de entorno o extrae de la URI
+  const dbNameFromEnv = process.env.DB_NAME;
+  if (dbNameFromEnv) {
+    currentDatabase = dbNameFromEnv;
+  } else {
+    currentDatabase = mongoose.connection.name;
+  }
+
   isMongoConnected = true;
   console.log("¡Conectado a la Base de Datos!");
 }
@@ -42,7 +52,7 @@ const Frase = mongoose.models.Frase || mongoose.model("Frase", FraseSchema);
 
 function getMongoDebugInfo() {
   return {
-    database: mongoose.connection.name,
+    database: currentDatabase || mongoose.connection.name,
     collection: Frase.collection.name,
     readyState: mongoose.connection.readyState,
   };
