@@ -19,7 +19,7 @@ if (!mongoUri) {
 const mongoUriValidated: string = mongoUri;
 
 let isMongoConnected = false;
-let currentDatabase = "FraseAlbertoDB"; // Valor por defecto, se actualizará al conectar
+let currentDatabase = ""; // Valor por defecto, se actualizará al conectar
 
 async function connectToMongo() {
   if (isMongoConnected) return;
