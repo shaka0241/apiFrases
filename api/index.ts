@@ -24,15 +24,14 @@ let currentDatabase = ""; // Valor por defecto, se actualizará al conectar
 async function connectToMongo() {
   if (isMongoConnected) return;
 
-  await mongoose.connect(mongoUriValidated);
-
-  // Usa el nombre de DB de la variable de entorno o extrae de la URI
+  // Si existe DB_NAME, forzamos ese nombre de base en la conexión.
   const dbNameFromEnv = process.env.DB_NAME;
-  if (dbNameFromEnv) {
-    currentDatabase = dbNameFromEnv;
-  } else {
-    currentDatabase = mongoose.connection.name;
-  }
+  const connectionOptions = dbNameFromEnv
+    ? { dbName: dbNameFromEnv }
+    : undefined;
+
+  await mongoose.connect(mongoUriValidated, connectionOptions);
+  currentDatabase = mongoose.connection.name;
 
   isMongoConnected = true;
   console.log("¡Conectado a la Base de Datos!");
