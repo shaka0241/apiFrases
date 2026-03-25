@@ -110,5 +110,61 @@ app.post("/api/frases", async (req: Request, res: Response) => {
   }
 });
 
+// Ruta PUT: Sirve para ACTUALIZAR una frase
+app.put("/api/frases/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { texto, autor } = req.body;
+
+    if (!texto || !autor) {
+      res.status(400).json({ error: "Debes enviar texto y autor" });
+      return;
+    }
+
+    await connectToMongo();
+    const fraseActualizada = await Frase.findByIdAndUpdate(
+      id,
+      { texto, autor },
+      { new: true } // Devuelve el documento actualizado
+    );
+
+    if (!fraseActualizada) {
+      res.status(404).json({ error: "Frase no encontrada" });
+      return;
+    }
+
+    res.json(fraseActualizada);
+  } catch (error) {
+    console.error("Error al actualizar frase:", error);
+    res.status(500).json({
+      error: "No se pudo actualizar la frase",
+      detail: error instanceof Error ? error.message : "Error desconocido",
+    });
+  }
+});
+
+// Ruta DELETE: Sirve para ELIMINAR una frase
+app.delete("/api/frases/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    await connectToMongo();
+    const fraseEliminada = await Frase.findByIdAndDelete(id);
+
+    if (!fraseEliminada) {
+      res.status(404).json({ error: "Frase no encontrada" });
+      return;
+    }
+
+    res.json({ message: "Frase eliminada correctamente", frase: fraseEliminada });
+  } catch (error) {
+    console.error("Error al eliminar frase:", error);
+    res.status(500).json({
+      error: "No se pudo eliminar la frase",
+      detail: error instanceof Error ? error.message : "Error desconocido",
+    });
+  }
+});
+
 // 6. Exportamos la app para que Vercel pueda encenderla
 export default app;

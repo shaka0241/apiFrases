@@ -165,11 +165,12 @@ if (!mongoUri) {
 const mongoUriValidated: string = mongoUri;
 
 let isMongoConnected = false;
-let currentDatabase = "";
+let currentDatabase = ""; // Valor por defecto, se actualizará al conectar
 
 async function connectToMongo() {
-  if (isMongoConnected) return; // Evita conectar dos veces
+  if (isMongoConnected) return;
 
+  // Si existe DB_NAME, forzamos ese nombre de base en la conexión.
   const dbNameFromEnv = process.env.DB_NAME;
   const connectionOptions = dbNameFromEnv
     ? { dbName: dbNameFromEnv }
@@ -198,7 +199,7 @@ const FraseSchema = new mongoose.Schema(
   },
   {
     collection: "frases",
-  }
+  },
 );
 
 const Frase = mongoose.models.Frase || mongoose.model("Frase", FraseSchema);
@@ -209,6 +210,18 @@ const Frase = mongoose.models.Frase || mongoose.model("Frase", FraseSchema);
 
 La expresión `mongoose.models.Frase || mongoose.model(...)` evita un error en entornos serverless donde el modelo podría haberse registrado en una ejecución anterior.
 
+Agregamos una función auxiliar para obtener información de depuración:
+
+```typescript
+function getMongoDebugInfo() {
+  return {
+    database: currentDatabase || mongoose.connection.name,
+    collection: Frase.collection.name,
+    readyState: mongoose.connection.readyState,
+  };
+}
+```
+
 ### 5.4 — Las rutas de la API
 
 #### Ruta de diagnóstico: `GET /api/debug-db`
@@ -217,13 +230,13 @@ La expresión `mongoose.models.Frase || mongoose.model(...)` evita un error en e
 app.get("/api/debug-db", async (req: Request, res: Response) => {
   try {
     await connectToMongo();
-    res.json({
-      database: currentDatabase,
-      collection: Frase.collection.name,
-      readyState: mongoose.connection.readyState,
-    });
+    res.json(getMongoDebugInfo());
   } catch (error) {
-    res.status(500).json({ error: "No se pudo inspeccionar la conexion" });
+    console.error("Error al inspeccionar MongoDB:", error);
+    res.status(500).json({
+      error: "No se pudo inspeccionar la conexion",
+      detail: error instanceof Error ? error.message : "Error desconocido",
+    });
   }
 });
 ```
@@ -236,10 +249,14 @@ Nos dice a qué base de datos y colección estamos conectados. Muy útil para de
 app.get("/api/frases", async (req: Request, res: Response) => {
   try {
     await connectToMongo();
-    const frases = await Frase.find(); // Busca TODOS los documentos
+    const frases = await Frase.find(); // Busca todas las frases en MongoDB
     res.json(frases);
   } catch (error) {
-    res.status(500).json({ error: "No se pudieron obtener las frases" });
+    console.error("Error al leer frases:", error);
+    res.status(500).json({
+      error: "No se pudieron obtener las frases",
+      detail: error instanceof Error ? error.message : "Error desconocido",
+    });
   }
 });
 ```
@@ -259,11 +276,15 @@ app.post("/api/frases", async (req: Request, res: Response) => {
     }
 
     await connectToMongo();
-    const nuevaFrase = new Frase({ texto, autor });
-    await nuevaFrase.save();
-    res.status(201).json(nuevaFrase);
+    const nuevaFrase = new Frase({ texto, autor }); // Toma los datos que envía el usuario
+    await nuevaFrase.save(); // Los guarda en MongoDB
+    res.status(201).json(nuevaFrase); // Responde con la frase recién creada
   } catch (error) {
-    res.status(500).json({ error: "No se pudo guardar la frase" });
+    console.error("Error al crear frase:", error);
+    res.status(500).json({
+      error: "No se pudo guardar la frase",
+      detail: error instanceof Error ? error.message : "Error desconocido",
+    });
   }
 });
 ```
@@ -272,6 +293,29 @@ app.post("/api/frases", async (req: Request, res: Response) => {
 - Se valida que ambos campos existan; si no, se responde con `400 Bad Request`
 - Se crea un documento nuevo y se guarda en MongoDB con `.save()`
 - Se responde con `201 Created` y el documento recién creado
+
+#### Ruta PUT: `PUT /api/frases/:id` — Actualizar una frase existente
+
+```typescript
+app.put("/api/frases/:id", async (req: Request, res: Response) => {
+  // ... extrae el id de los parámetros y el texto/autor del body
+  // ... busca por id y actualiza con findByIdAndUpdate
+});
+```
+
+- `:id` es un parámetro de ruta dinámico que representa el identificador único de la frase.
+- Usamos `findByIdAndUpdate` de Mongoose para actualizarla directamente.
+
+#### Ruta DELETE: `DELETE /api/frases/:id` — Eliminar una frase
+
+```typescript
+app.delete("/api/frases/:id", async (req: Request, res: Response) => {
+  // ... extrae el id y elimina con findByIdAndDelete
+});
+```
+
+- Busca y elimina el documento en una sola operación con `findByIdAndDelete`.
+- Devuelve un error `404 Not Found` si la frase no existe.
 
 ### 5.5 — Exportación para Vercel
 
@@ -287,9 +331,10 @@ En lugar de llamar a `app.listen(puerto)` (como haríamos en un servidor tradici
 
 | Código | Significado | Cuándo se usa en este proyecto |
 |---|---|---|
-| `200` | OK | Respuesta exitosa por defecto (GET) |
+| `200` | OK | Respuesta exitosa por defecto (GET, PUT, DELETE) |
 | `201` | Created | Frase creada correctamente (POST) |
 | `400` | Bad Request | Faltan campos en el cuerpo de la petición |
+| `404` | Not Found | No se encontró la frase (PUT, DELETE) |
 | `500` | Internal Server Error | Error al conectar a MongoDB u otro error interno |
 
 ---
@@ -351,6 +396,22 @@ Content-Type: application/json
 }
 ```
 
+**Actualizar una frase (reemplaza `<id>` por un ID real de MongoDB):**
+```
+PUT https://tu-proyecto.vercel.app/api/frases/<id>
+Content-Type: application/json
+
+{
+  "texto": "La imaginación es más importante que el conocimiento (Editado)",
+  "autor": "Albert Einstein"
+}
+```
+
+**Eliminar una frase:**
+```
+DELETE https://tu-proyecto.vercel.app/api/frases/<id>
+```
+
 **Ver información de la conexión:**
 ```
 GET https://tu-proyecto.vercel.app/api/debug-db
@@ -371,9 +432,11 @@ Cliente (navegador / Postman)
         ▼
     Express App
         │
-        ├── GET /api/frases    → conecta a Mongo → Frase.find() → JSON[]
-        ├── POST /api/frases   → valida body → new Frase().save() → JSON
-        └── GET /api/debug-db  → info de conexión → JSON
+        ├── GET /api/frases        → conecta a Mongo → Frase.find() → JSON[]
+        ├── POST /api/frases       → valida body → new Frase().save() → JSON
+        ├── PUT /api/frases/:id    → valida body → Frase.findByIdAndUpdate() → JSON
+        ├── DELETE /api/frases/:id → Frase.findByIdAndDelete() → JSON
+        └── GET /api/debug-db      → info de conexión → JSON
         │
         ▼
     MongoDB Atlas (en la nube)
